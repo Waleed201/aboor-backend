@@ -20,7 +20,8 @@ app.use(cors({
       'http://localhost:3000',
       'http://localhost:3001',
       'http://127.0.0.1:3000',
-      process.env.FRONTEND_URL
+      process.env.FRONTEND_URL,
+      process.env.SCANNER_URL
     ].filter(Boolean);
     
     if (allowedOrigins.indexOf(origin) !== -1) {
