@@ -16,14 +16,8 @@ app.use(cors({
     if (!origin) return callback(null, true);
     
     // Allow specific origins
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://127.0.0.1:3000',
-      process.env.FRONTEND_URL,
-      process.env.SCANNER_URL
-    ].filter(Boolean);
-    
+    // Allow all origins by setting allowedOrigins to '*'
+    const allowedOrigins = ['*'];
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
