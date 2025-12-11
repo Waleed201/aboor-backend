@@ -92,25 +92,32 @@ ticketSchema.index({ qrCode2: 1 });
 ticketSchema.index({ status: 1 });
 ticketSchema.index({ reservedUntil: 1 });
 
-// Helper function to generate random 20-character string
-function generateRandomString(length = 20) {
+// Helper function to generate UNIQUE random string
+function generateUniqueQRCode(ticketId, type = 'primary') {
   const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += characters.charAt(Math.floor(Math.random() * characters.length));
-  }
-  return result;
+  const timestamp = Date.now().toString(36).toUpperCase(); // Base36 timestamp
+  const randomPart = Array.from({ length: 12 }, () => 
+    characters.charAt(Math.floor(Math.random() * characters.length))
+  ).join('');
+  
+  // Combine: timestamp + random + ticketId suffix + type indicator
+  const typePrefix = type === 'primary' ? '1' : '2';
+  const idSuffix = ticketId ? ticketId.toString().slice(-4).toUpperCase() : 'XXXX';
+  
+  return `${typePrefix}${timestamp}${randomPart}${idSuffix}`;
 }
 
 // Generate QR codes on save
 ticketSchema.pre('save', function() {
+  const ticketId = this._id ? this._id.toString() : mongoose.Types.ObjectId().toString();
+  
   if (!this.qrCode1) {
-    // Generate first QR code with random 20-character string
-    this.qrCode1 = generateRandomString(20);
+    // Generate first QR code with UNIQUE string
+    this.qrCode1 = generateUniqueQRCode(ticketId, 'primary');
   }
   if (!this.qrCode2) {
-    // Generate second QR code with random 20-character string
-    this.qrCode2 = generateRandomString(20);
+    // Generate second QR code with UNIQUE string (different from first)
+    this.qrCode2 = generateUniqueQRCode(ticketId, 'secondary');
   }
 });
 

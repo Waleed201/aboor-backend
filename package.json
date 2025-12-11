@@ -7,7 +7,8 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "seed": "node src/utils/seed.js",
-    "regenerate-qr": "node src/utils/regenerateQR.js"
+    "regenerate-qr": "node src/utils/regenerateQR.js",
+    "fix-qr": "node src/utils/fixDuplicateQRCodes.js"
   },
   "keywords": [
     "aboor",
