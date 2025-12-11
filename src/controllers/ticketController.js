@@ -185,23 +185,19 @@ const processPayment = async (req, res, next) => {
     // Populate match details first (needed for QR code generation)
     await ticket.populate('matchId');
 
-    // Generate QR code image with ticket details
+    // Generate both QR code images
     try {
-      const ticketData = {
-        _id: ticket._id,
-        user: ticket.userId,
-        match: ticket.matchId,
-        seatNumber: `${ticket.seatInfo.zone}-${ticket.seatInfo.areaNumber}`,
-        zone: ticket.seatInfo.zone,
-        area: ticket.seatInfo.areaNumber,
-        qrCode: ticket.qrCode,
-        createdAt: ticket.createdAt
-      };
+      const qrCodeImages = await qrCodeService.generateDualQRCodes(
+        ticket.qrCode1,
+        ticket.qrCode2,
+        ticket._id.toString()
+      );
       
-      ticket.qrCodeImage = await qrCodeService.generateTicketQRCode(ticketData);
+      ticket.qrCodeImage1 = qrCodeImages.qrCodeImage1;
+      ticket.qrCodeImage2 = qrCodeImages.qrCodeImage2;
       await ticket.save();
     } catch (qrError) {
-      console.error('Failed to generate QR code:', qrError);
+      console.error('Failed to generate QR codes:', qrError);
       // Continue even if QR generation fails - ticket is still valid
     }
 
@@ -453,12 +449,184 @@ const markTicketAsUsed = async (req, res, next) => {
   }
 };
 
+// @desc    Switch ticket QR code (after primary scan)
+// @route   POST /api/tickets/switch-qr
+// @access  Public (scanner app)
+const switchTicketQRCode = async (req, res, next) => {
+  try {
+    const { qrCode } = req.body;
+
+    if (!qrCode) {
+      return res.status(400).json({
+        error: 'QR code required',
+        message: 'Please provide the scanned QR code string'
+      });
+    }
+
+    // Find ticket by QR Code 1 (primary/main QR)
+    const ticket = await Ticket.findOne({ qrCode1: qrCode })
+      .populate('matchId')
+      .populate('userId', 'name email');
+
+    if (!ticket) {
+      return res.status(404).json({
+        error: 'Ticket not found',
+        message: 'No ticket found with this QR code'
+      });
+    }
+
+    // Check if ticket is active
+    if (ticket.status !== 'active') {
+      return res.status(400).json({
+        error: 'Invalid ticket status',
+        message: 'Ticket is not active',
+        status: ticket.status
+      });
+    }
+
+    // Check if already switched
+    if (ticket.activeQRCode === 'secondary') {
+      return res.status(400).json({
+        error: 'Already switched',
+        message: 'This QR code was already scanned. Please show QR Code 2.',
+        secondaryQRCode: ticket.qrCode2
+      });
+    }
+
+    // Record scan time for primary QR code
+    ticket.qrCode1ScannedAt = new Date();
+    
+    // Switch to secondary QR code
+    ticket.activeQRCode = 'secondary';
+    await ticket.save();
+
+    // Emit WebSocket event to notify user's app
+    const io = req.app.get('io');
+    if (io) {
+      // Emit to the specific user
+      io.emit(`qr-switch-${ticket.userId._id}`, {
+        ticketId: ticket._id.toString(),
+        activeQRCode: 'secondary',
+        message: 'Please show QR Code 2 at the gate',
+        timestamp: new Date()
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Primary QR code verified. Ticket switched to secondary QR code.',
+      data: {
+        ticketId: ticket._id,
+        mainQRCode: ticket.qrCode1,
+        secondaryQRCode: ticket.qrCode2,
+        activeQRCode: ticket.activeQRCode,
+        scannedAt: ticket.qrCode1ScannedAt,
+        status: ticket.status,
+        match: {
+          homeTeam: ticket.matchId.homeTeam,
+          awayTeam: ticket.matchId.awayTeam,
+          stadium: ticket.matchId.stadium,
+          date: ticket.matchId.date
+        },
+        seat: {
+          zone: ticket.seatInfo.zone,
+          area: ticket.seatInfo.areaNumber
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Verify secondary QR code (at gate)
+// @route   POST /api/tickets/verify-secondary-qr
+// @access  Public (scanner app)
+const verifySecondaryQRCode = async (req, res, next) => {
+  try {
+    const { qrCode } = req.body;
+
+    if (!qrCode) {
+      return res.status(400).json({
+        error: 'QR code required',
+        message: 'Please provide the scanned QR code string'
+      });
+    }
+
+    // Find ticket by QR Code 2 (secondary QR)
+    const ticket = await Ticket.findOne({ qrCode2: qrCode })
+      .populate('matchId')
+      .populate('userId', 'name email');
+
+    if (!ticket) {
+      return res.status(404).json({
+        error: 'Ticket not found',
+        message: 'No ticket found with this QR code'
+      });
+    }
+
+    // Check if ticket is active
+    if (ticket.status !== 'active') {
+      return res.status(400).json({
+        error: 'Invalid ticket status',
+        message: 'Ticket is not active',
+        status: ticket.status
+      });
+    }
+
+    // Check if primary QR was scanned first
+    if (ticket.activeQRCode !== 'secondary') {
+      return res.status(400).json({
+        error: 'Invalid sequence',
+        message: 'Primary QR code must be scanned first at the entrance',
+        currentActiveQR: ticket.activeQRCode
+      });
+    }
+
+    // Record scan time for secondary QR code
+    ticket.qrCode2ScannedAt = new Date();
+    
+    // Mark ticket as used
+    ticket.status = 'used';
+    await ticket.save();
+
+    res.json({
+      success: true,
+      message: 'Secondary QR code verified. Entry granted!',
+      data: {
+        ticketId: ticket._id,
+        status: ticket.status,
+        qrCode1ScannedAt: ticket.qrCode1ScannedAt,
+        qrCode2ScannedAt: ticket.qrCode2ScannedAt,
+        user: {
+          name: ticket.userId.name,
+          email: ticket.userId.email
+        },
+        match: {
+          homeTeam: ticket.matchId.homeTeam,
+          awayTeam: ticket.matchId.awayTeam,
+          stadium: ticket.matchId.stadium,
+          date: ticket.matchId.date
+        },
+        seat: {
+          zone: ticket.seatInfo.zone,
+          area: ticket.seatInfo.areaNumber
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   bookTicket,
   getTicket,
   processPayment,
   cancelTicket,
   verifyQRCode,
-  markTicketAsUsed
+  markTicketAsUsed,
+  switchTicketQRCode,
+  verifySecondaryQRCode
 };
 

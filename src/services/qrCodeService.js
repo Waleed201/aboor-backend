@@ -70,6 +70,66 @@ const generateSimpleQRCode = async (text) => {
 };
 
 /**
+ * Generate two QR codes for a ticket
+ * @param {string} qrCode1 - First random string
+ * @param {string} qrCode2 - Second random string
+ * @param {string} ticketId - Ticket ID for verification
+ * @returns {Promise<Object>} Object with both QR code images
+ */
+const generateDualQRCodes = async (qrCode1, qrCode2, ticketId) => {
+  try {
+    // Generate first QR code with verification data
+    const data1 = JSON.stringify({
+      ticketId,
+      qrCode: qrCode1,
+      type: 'primary',
+      timestamp: Date.now()
+    });
+
+    // Generate second QR code with verification data
+    const data2 = JSON.stringify({
+      ticketId,
+      qrCode: qrCode2,
+      type: 'secondary',
+      timestamp: Date.now()
+    });
+
+    // Generate both QR code images
+    const qrCodeImage1 = await QRCode.toDataURL(data1, {
+      errorCorrectionLevel: 'H',
+      type: 'image/png',
+      quality: 0.95,
+      margin: 1,
+      width: 300,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF'
+      }
+    });
+
+    const qrCodeImage2 = await QRCode.toDataURL(data2, {
+      errorCorrectionLevel: 'H',
+      type: 'image/png',
+      quality: 0.95,
+      margin: 1,
+      width: 300,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF'
+      }
+    });
+
+    return {
+      qrCodeImage1,
+      qrCodeImage2
+    };
+  } catch (error) {
+    console.error('Error generating dual QR codes:', error);
+    throw new Error('Failed to generate QR codes');
+  }
+};
+
+/**
  * Verify QR code data
  * @param {string} qrData - Scanned QR code data
  * @returns {Object} Parsed verification data
@@ -98,6 +158,7 @@ const verifyQRCode = (qrData) => {
 module.exports = {
   generateTicketQRCode,
   generateSimpleQRCode,
+  generateDualQRCodes,
   verifyQRCode
 };
 

@@ -36,12 +36,37 @@ const ticketSchema = new mongoose.Schema({
     enum: ['pending', 'completed', 'failed', 'refunded'],
     default: 'pending'
   },
-  qrCode: {
+  // First QR Code
+  qrCode1: {
     type: String,
     unique: true
   },
-  qrCodeImage: {
+  qrCodeImage1: {
     type: String, // Base64 encoded QR code image (data URI)
+    default: null
+  },
+  // Second QR Code
+  qrCode2: {
+    type: String,
+    unique: true
+  },
+  qrCodeImage2: {
+    type: String, // Base64 encoded QR code image (data URI)
+    default: null
+  },
+  // Track which QR code is currently active
+  activeQRCode: {
+    type: String,
+    enum: ['primary', 'secondary'],
+    default: 'primary'
+  },
+  // Track scan history
+  qrCode1ScannedAt: {
+    type: Date,
+    default: null
+  },
+  qrCode2ScannedAt: {
+    type: Date,
     default: null
   },
   status: {
@@ -62,15 +87,30 @@ const ticketSchema = new mongoose.Schema({
 
 // Indexes
 ticketSchema.index({ userId: 1, matchId: 1 });
-ticketSchema.index({ qrCode: 1 });
+ticketSchema.index({ qrCode1: 1 });
+ticketSchema.index({ qrCode2: 1 });
 ticketSchema.index({ status: 1 });
 ticketSchema.index({ reservedUntil: 1 });
 
-// Generate QR code on save
+// Helper function to generate random 20-character string
+function generateRandomString(length = 20) {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  return result;
+}
+
+// Generate QR codes on save
 ticketSchema.pre('save', function() {
-  if (!this.qrCode) {
-    // Generate a unique QR code (simplified version)
-    this.qrCode = `AB${this._id.toString().slice(-6).toUpperCase()}${Date.now().toString(36).toUpperCase()}`;
+  if (!this.qrCode1) {
+    // Generate first QR code with random 20-character string
+    this.qrCode1 = generateRandomString(20);
+  }
+  if (!this.qrCode2) {
+    // Generate second QR code with random 20-character string
+    this.qrCode2 = generateRandomString(20);
   }
 });
 
