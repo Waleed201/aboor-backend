@@ -452,6 +452,181 @@ const markTicketAsUsed = async (req, res, next) => {
 // @desc    Switch ticket QR code (after primary scan)
 // @route   POST /api/tickets/switch-qr
 // @access  Public (scanner app)
+// @desc    Verify QR Code 1 (first scan at entrance)
+// @route   POST /api/tickets/verify-qr1
+// @access  Public (scanner app)
+const verifyQRCode1 = async (req, res, next) => {
+  try {
+    const { qrCode } = req.body;
+
+    if (!qrCode) {
+      return res.status(400).json({
+        error: 'QR code required',
+        message: 'Please provide the scanned QR code string'
+      });
+    }
+
+    // Find ticket by QR Code 1 ONLY
+    let ticket = await Ticket.findOne({ qrCode1: qrCode })
+      .populate('matchId')
+      .populate('userId', 'name email');
+
+    if (!ticket) {
+      return res.status(404).json({
+        error: 'Ticket not found',
+        message: 'No ticket found with this QR Code 1',
+        hint: 'Make sure you are scanning QR Code 1 (the first code)'
+      });
+    }
+
+    // Check if ticket is active
+    if (ticket.status !== 'active') {
+      return res.status(400).json({
+        error: 'Invalid ticket status',
+        message: 'Ticket is not active',
+        status: ticket.status
+      });
+    }
+
+    // Check if already switched
+    if (ticket.activeQRCode === 'secondary') {
+      return res.status(400).json({
+        error: 'Already scanned',
+        message: 'QR Code 1 was already scanned. Please scan QR Code 2 now.',
+        secondaryQRCode: ticket.qrCode2
+      });
+    }
+
+    // Record scan time for QR Code 1
+    ticket.qrCode1ScannedAt = new Date();
+    
+    // Switch to secondary QR code
+    ticket.activeQRCode = 'secondary';
+    await ticket.save();
+
+    // Emit WebSocket event to notify user's app
+    const io = req.app.get('io');
+    if (io) {
+      io.emit(`qr-switch-${ticket.userId._id}`, {
+        ticketId: ticket._id.toString(),
+        activeQRCode: 'secondary',
+        message: 'Please show QR Code 2 at the gate',
+        timestamp: new Date()
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'QR Code 1 verified successfully. Ticket switched to QR Code 2.',
+      data: {
+        ticketId: ticket._id,
+        qrCode1: ticket.qrCode1,
+        qrCode2: ticket.qrCode2,
+        activeQRCode: ticket.activeQRCode,
+        scannedAt: ticket.qrCode1ScannedAt,
+        status: ticket.status,
+        match: {
+          homeTeam: ticket.matchId.homeTeam,
+          awayTeam: ticket.matchId.awayTeam,
+          stadium: ticket.matchId.stadium,
+          date: ticket.matchId.date
+        },
+        seat: {
+          zone: ticket.seatInfo.zone,
+          area: ticket.seatInfo.areaNumber
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Verify QR Code 2 (second scan at entrance)
+// @route   POST /api/tickets/verify-qr2
+// @access  Public (scanner app)
+const verifyQRCode2 = async (req, res, next) => {
+  try {
+    const { qrCode } = req.body;
+
+    if (!qrCode) {
+      return res.status(400).json({
+        error: 'QR code required',
+        message: 'Please provide the scanned QR code string'
+      });
+    }
+
+    // Find ticket by QR Code 2 ONLY
+    let ticket = await Ticket.findOne({ qrCode2: qrCode })
+      .populate('matchId')
+      .populate('userId', 'name email');
+
+    if (!ticket) {
+      return res.status(404).json({
+        error: 'Ticket not found',
+        message: 'No ticket found with this QR Code 2',
+        hint: 'Make sure you are scanning QR Code 2 (the second code)'
+      });
+    }
+
+    // Check if ticket is active
+    if (ticket.status !== 'active') {
+      return res.status(400).json({
+        error: 'Invalid ticket status',
+        message: 'Ticket is not active',
+        status: ticket.status
+      });
+    }
+
+    // Check if QR Code 1 was scanned first
+    if (ticket.activeQRCode !== 'secondary') {
+      return res.status(400).json({
+        error: 'Invalid sequence',
+        message: 'QR Code 1 must be scanned first at the entrance',
+        currentActiveQR: ticket.activeQRCode,
+        hint: 'Please scan QR Code 1 first'
+      });
+    }
+
+    // Record scan time for QR Code 2
+    ticket.qrCode2ScannedAt = new Date();
+    
+    // Mark ticket as used
+    ticket.status = 'used';
+    await ticket.save();
+
+    res.json({
+      success: true,
+      message: 'QR Code 2 verified. Entry granted!',
+      data: {
+        ticketId: ticket._id,
+        status: ticket.status,
+        qrCode1ScannedAt: ticket.qrCode1ScannedAt,
+        qrCode2ScannedAt: ticket.qrCode2ScannedAt,
+        user: {
+          name: ticket.userId.name,
+          email: ticket.userId.email
+        },
+        match: {
+          homeTeam: ticket.matchId.homeTeam,
+          awayTeam: ticket.matchId.awayTeam,
+          stadium: ticket.matchId.stadium,
+          date: ticket.matchId.date
+        },
+        seat: {
+          zone: ticket.seatInfo.zone,
+          area: ticket.seatInfo.areaNumber
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Switch ticket QR code (legacy - accepts both codes)
+// @route   POST /api/tickets/switch-qr
+// @access  Public (scanner app)
 const switchTicketQRCode = async (req, res, next) => {
   try {
     const { qrCode } = req.body;
@@ -639,6 +814,8 @@ module.exports = {
   verifyQRCode,
   markTicketAsUsed,
   switchTicketQRCode,
-  verifySecondaryQRCode
+  verifySecondaryQRCode,
+  verifyQRCode1,
+  verifyQRCode2
 };
 

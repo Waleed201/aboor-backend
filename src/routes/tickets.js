@@ -7,7 +7,9 @@ const {
   verifyQRCode,
   markTicketAsUsed,
   switchTicketQRCode,
-  verifySecondaryQRCode
+  verifySecondaryQRCode,
+  verifyQRCode1,
+  verifyQRCode2
 } = require('../controllers/ticketController');
 const { protect } = require('../middleware/auth');
 const { adminAuth } = require('../middleware/adminAuth');
@@ -17,8 +19,10 @@ const router = express.Router();
 
 // Public routes for QR code scanning (scanner app access)
 // Scanner sends the QR code string, not the ticket ID
-router.post('/switch-qr', switchTicketQRCode);  // Scan QR Code 1 at entrance
-router.post('/verify-secondary-qr', verifySecondaryQRCode);  // Scan QR Code 2 at gate
+router.post('/verify-qr1', verifyQRCode1);  // NEW: Scan QR Code 1 at entrance
+router.post('/verify-qr2', verifyQRCode2);  // NEW: Scan QR Code 2 at gate
+router.post('/switch-qr', switchTicketQRCode);  // LEGACY: Accepts both codes
+router.post('/verify-secondary-qr', verifySecondaryQRCode);  // LEGACY: Accepts both codes
 
 // All other routes require authentication
 router.use(protect);
