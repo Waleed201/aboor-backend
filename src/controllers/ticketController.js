@@ -464,11 +464,26 @@ const switchTicketQRCode = async (req, res, next) => {
     }
 
     // Find ticket by QR Code 1 (primary/main QR)
-    const ticket = await Ticket.findOne({ qrCode1: qrCode })
+    let ticket = await Ticket.findOne({ qrCode1: qrCode })
       .populate('matchId')
       .populate('userId', 'name email');
 
     if (!ticket) {
+      // Check if this is actually QR Code 2 (user scanned wrong code)
+      const ticketWithQR2 = await Ticket.findOne({ qrCode2: qrCode })
+        .populate('matchId')
+        .populate('userId', 'name email');
+      
+      if (ticketWithQR2) {
+        return res.status(400).json({
+          error: 'Wrong QR Code',
+          message: 'This is QR Code 2. Please scan QR Code 1 first at the entrance gate.',
+          hint: 'Show the first QR code on your ticket',
+          ticketId: ticketWithQR2._id
+        });
+      }
+      
+      // QR code not found at all
       return res.status(404).json({
         error: 'Ticket not found',
         message: 'No ticket found with this QR code'
@@ -554,11 +569,39 @@ const verifySecondaryQRCode = async (req, res, next) => {
     }
 
     // Find ticket by QR Code 2 (secondary QR)
-    const ticket = await Ticket.findOne({ qrCode2: qrCode })
+    let ticket = await Ticket.findOne({ qrCode2: qrCode })
       .populate('matchId')
       .populate('userId', 'name email');
 
     if (!ticket) {
+      // Check if this is actually QR Code 1 (user scanned wrong code)
+      const ticketWithQR1 = await Ticket.findOne({ qrCode1: qrCode })
+        .populate('matchId')
+        .populate('userId', 'name email');
+      
+      if (ticketWithQR1) {
+        // Check if they need to scan at first gate
+        if (ticketWithQR1.activeQRCode === 'primary') {
+          return res.status(400).json({
+            error: 'Wrong QR Code',
+            message: 'This is QR Code 1. You need to scan this at the entrance gate first.',
+            hint: 'Go back to the entrance gate to scan QR Code 1',
+            ticketId: ticketWithQR1._id,
+            currentActiveQR: ticketWithQR1.activeQRCode
+          });
+        } else {
+          // They already scanned QR1, now need QR2
+          return res.status(400).json({
+            error: 'Wrong QR Code',
+            message: 'This is QR Code 1. Please scan QR Code 2 (the second code on your ticket).',
+            hint: 'Show the second QR code on your ticket',
+            ticketId: ticketWithQR1._id,
+            currentActiveQR: ticketWithQR1.activeQRCode
+          });
+        }
+      }
+      
+      // QR code not found at all
       return res.status(404).json({
         error: 'Ticket not found',
         message: 'No ticket found with this QR code'
