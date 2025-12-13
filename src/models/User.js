@@ -45,7 +45,23 @@ const userSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
-  }
+  },
+  dependents: [{
+    name: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    nationalId: {
+      type: String,
+      required: true,
+      match: [/^\d{10}$/, 'National ID must be 10 digits']
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }]
 }, {
   timestamps: true
 });
@@ -80,6 +96,8 @@ userSchema.methods.toPublicProfile = function() {
     nationalId: this.nationalId,
     favoriteTeam: this.favoriteTeam,
     role: this.role,
+    isActive: this.isActive,
+    dependents: this.dependents || [],
     createdAt: this.createdAt
   };
 };

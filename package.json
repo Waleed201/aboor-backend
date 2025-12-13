@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "seed": "node src/utils/seed.js",
     "regenerate-qr": "node src/utils/regenerateQR.js",
-    "fix-qr": "node src/utils/fixDuplicateQRCodes.js"
+    "fix-qr": "node src/utils/fixDuplicateQRCodes.js",
+    "drop-old-indexes": "node src/utils/dropOldIndexes.js"
   },
   "keywords": [
     "aboor",
